@@ -20,7 +20,9 @@ with st.sidebar:
     api_key = st.text_input("הכנס מפתח Gemini API:", type="password")
     st.markdown("[לחץ כאן להוצאת מפתח חינמי](https://aistudio.google.com/app/apikey)")
 
-user_input = st.text_area("מה ברצונך לבדוק?", placeholder="לדוגמה: ת"א 35, לאומי ודולר שקל לשנה אחרונה.")
+# תיקון השורה הבעייתית - שמתי את הטקסט במשתנה נפרד למניעת שגיאות סינטקס
+instruction = "לדוגמה: תא 35, לאומי ודולר שקל לשנה אחרונה."
+user_input = st.text_area("מה ברצונך לבדוק?", placeholder=instruction)
 
 if st.button("🚀 הפק אקסל"):
     if not api_key:
@@ -28,25 +30,19 @@ if st.button("🚀 הפק אקסל"):
         st.stop()
     
     try:
-        # פתרון קריטי לשגיאת 404: הגדרת גרסת API יציבה בלבד
+        # הגדרת המודל בגרסה היציבה
         genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # יצירת המודל עם הגדרה מפורשת לגרסה היציבה
-        model = genai.GenerativeModel(
-            model_name='gemini-1.5-flash'
-        )
-        
-        # שליחת השאילתה ל-AI
         prompt = f"""
         Extract assets and period from: "{user_input}"
         Map: ת"א 35=TA35.TA, דולר/שקל=ILS=X, S&P 500=ES=F, לאומי=LUMI.TA, פועלים=POLI.TA, בנקים=TELB.TA.
         Return ONLY JSON: {{"tickers": ["TICKER"], "period": "1y"}}
         """
         
-        # שימוש בשיטה עוקפת שגיאות גרסה
         response = model.generate_content(prompt)
         
-        # עיבוד התוצאה
+        # ניקוי ופענוח JSON
         clean_text = response.text.replace('```json', '').replace('```', '').strip()
         data = json.loads(clean_text)
         tickers = data.get("tickers", [])
@@ -58,7 +54,7 @@ if st.button("🚀 הפק אקסל"):
 
         all_results = {}
         for sym in tickers:
-            # הורדה ועיבוד לפי חליפת ההגנה שבנינו
+            # הורדה ועיבוד
             df = yf.download(sym, period=period, interval="1h", auto_adjust=False, progress=False)
             if df.empty: continue
             
@@ -71,6 +67,7 @@ if st.button("🚀 הפק אקסל"):
             else:
                 df.index = df.index.tz_convert('Asia/Jerusalem')
             
+            # השלמת נתונים חסרים (Forward Fill)
             df = df[~df.index.duplicated(keep='first')].resample('h').ffill(limit=4)
             
             df_11 = df[df.index.hour == 11][['Close']].copy()
@@ -86,10 +83,10 @@ if st.button("🚀 הפק אקסל"):
             all_results[sym] = merged[['Date', 'Time_11', 'Close_11', 'Time_14', 'Close_14', 'Yield']]
 
         if not all_results:
-            st.warning("לא נמצאו נתונים.")
+            st.warning("לא נמצאו נתונים תקינים.")
             st.stop()
 
-        # יצירת אקסל
+        # יצירת אקסל בזיכרון
         buf = BytesIO()
         with pd.ExcelWriter(buf, engine='openpyxl') as writer:
             col = 0
@@ -99,8 +96,7 @@ if st.button("🚀 הפק אקסל"):
                 col += len(d.columns) + 1
         
         st.success("✅ הקובץ מוכן!")
-        st.download_button("📥 הורד אקסל", buf.getvalue(), "Report.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("📥 הורד אקסל", buf.getvalue(), "Market_Report.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     except Exception as e:
         st.error(f"שגיאה: {e}")
-        st.info("אם מופיעה שגיאת 404, ודא שמפתח ה-API תקין ונוצר ב-Google AI Studio.")
