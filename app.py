@@ -29,8 +29,9 @@ if st.button("🚀 הפק אקסל"):
         st.stop()
     
     try:
-        # פתרון סופי: פנייה ישירה ל-API של גוגל בכתובת v1 היציבה
-        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+        # פתרון סופי: שימוש במודל בגרסת ה-Beta המעודכנת (v1beta)
+        # שם המודל המדויק לגרסה זו הוא gemini-1.5-flash-latest
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
         
         prompt = f"""
         Extract assets and period from: "{user_input}"
@@ -44,7 +45,6 @@ if st.button("🚀 הפק אקסל"):
             }]
         }
         
-        # שליחת הבקשה בשיטה הישירה (REST) שעוקפת את מגבלות הספרייה
         response = requests.post(url, json=payload)
         
         if response.status_code != 200:
@@ -95,7 +95,7 @@ if st.button("🚀 הפק אקסל"):
             all_results[sym] = merged[['Date', 'Time_11', 'Close_11', 'Time_14', 'Close_14', 'Yield']]
 
         if not all_results:
-            st.warning("לא נמצאו נתונים תקינים.")
+            st.warning("לא נמצאו נתונים תקינים ביאהו פייננס.")
             st.stop()
 
         # כתיבה לאקסל
