@@ -1,7 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import google.generativeai as genai
+import requests
 import json
 from io import BytesIO
 import warnings
@@ -29,13 +29,8 @@ if st.button("🚀 הפק אקסל"):
         st.stop()
     
     try:
-        # פתרון קצה לשגיאת 404: הגדרה מפורשת של גרסת ה-API
-        from google.generativeai.types import RequestOptions
-        
-        genai.configure(api_key=api_key, transport='rest')
-        
-        # שימוש ב-RequestOptions כדי לכפות את גרסת v1 היציבה
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # פתרון סופי: פנייה ישירה ל-API של גוגל בכתובת v1 היציבה
+        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
         
         prompt = f"""
         Extract assets and period from: "{user_input}"
@@ -43,14 +38,24 @@ if st.button("🚀 הפק אקסל"):
         Return ONLY JSON: {{"tickers": ["TICKER"], "period": "1y"}}
         """
         
-        # הרצה עם הגדרה מפורשת לגרסה v1
-        response = model.generate_content(
-            prompt,
-            request_options=RequestOptions(api_version='v1')
-        )
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }]
+        }
+        
+        # שליחת הבקשה בשיטה הישירה (REST) שעוקפת את מגבלות הספרייה
+        response = requests.post(url, json=payload)
+        
+        if response.status_code != 200:
+            st.error(f"שגיאה מהשרת של גוגל: {response.text}")
+            st.stop()
+            
+        result_json = response.json()
+        ai_text = result_json['candidates'][0]['content']['parts'][0]['text']
         
         # ניקוי ופענוח JSON
-        clean_text = response.text.replace('```json', '').replace('```', '').strip()
+        clean_text = ai_text.replace('```json', '').replace('```', '').strip()
         data = json.loads(clean_text)
         tickers = data.get("tickers", [])
         period = data.get("period", "1y")
@@ -61,7 +66,7 @@ if st.button("🚀 הפק אקסל"):
 
         all_results = {}
         for sym in tickers:
-            # הורדה ועיבוד נתונים עם חליפת ההגנה
+            # הורדה ועיבוד נתונים
             df = yf.download(sym, period=period, interval="1h", auto_adjust=False, progress=False)
             if df.empty: continue
             
@@ -74,7 +79,7 @@ if st.button("🚀 הפק אקסל"):
             else:
                 df.index = df.index.tz_convert('Asia/Jerusalem')
             
-            # השלמת נתונים חסרים
+            # השלמת נתונים חסרים (Forward Fill)
             df = df[~df.index.duplicated(keep='first')].resample('h').ffill(limit=4)
             
             df_11 = df[df.index.hour == 11][['Close']].copy()
@@ -93,6 +98,7 @@ if st.button("🚀 הפק אקסל"):
             st.warning("לא נמצאו נתונים תקינים.")
             st.stop()
 
+        # כתיבה לאקסל
         buf = BytesIO()
         with pd.ExcelWriter(buf, engine='openpyxl') as writer:
             col = 0
