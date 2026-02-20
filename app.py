@@ -24,23 +24,23 @@ st.markdown("""
 
 st.title("📈 מחולל נתוני שוק אוטומטי")
 st.markdown("ברוכים הבאים למערכת החכמה להפקת נתוני מסחר. המערכת מבינה שפה חופשית ותכין עבורכם קובץ אקסל מסודר (יומי או שעתי).")
-st.divider()
 
-with st.sidebar:
-    st.header("⚙️ הגדרות מערכת")
-    api_key = st.text_input("הכנס מפתח Gemini API:", type="password")
-    st.caption("[לחץ כאן להוצאת מפתח חינמי מגוגל](https://aistudio.google.com/app/apikey)")
-    st.divider()
-    st.markdown("💡 **טיפ:** אם מופיעה שגיאה, המתן כדקה ונסה שוב.")
+# הודעת הבהרה על השעון
+st.info("🕒 **שימו לב:** כל השעות במערכת (בבקשה שלכם ובקובץ האקסל) הן לפי **שעון ישראל**. גם עבור נכסים בחו\"ל, המערכת מתרגמת את הזמן אוטומטית לשעון המקומי שלנו.")
+st.divider()
 
 st.subheader("מה ברצונך לבדוק?")
 instruction = "לדוגמה: תא 35 ודולר לשנה אחרונה / פועלים ולאומי לחודש אחרון בין 11:00 ל-14:00."
 user_input = st.text_area("הקלד את בקשתך כאן:", placeholder=instruction, height=100)
 
 if st.button("🚀 נתח והפק אקסל", use_container_width=True):
-    if not api_key:
-        st.error("🔒 אנא הכנס מפתח API בסרגל הצד.")
+    # משיכת המפתח מתוך הסודות של Streamlit
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        st.error("🔒 שגיאה: לא הוגדר מפתח API. אנא הוסף את המפתח להגדרות ה-Secrets ב-Streamlit Cloud.")
         st.stop()
+        
     if not user_input.strip():
         st.warning("✍️ אנא הכנס בקשה בתיבת הטקסט.")
         st.stop()
@@ -120,7 +120,6 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
                     all_results[sym] = merged[cols]
                     
                 else:
-                    # --- לוגיקה יומית מתוקנת ---
                     df = df[~df.index.duplicated(keep='first')]
                     df_daily = df[['Open', 'Close']].copy()
                     
@@ -130,8 +129,6 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
                     df_daily.dropna(subset=['Open', 'Close'], inplace=True)
                     
                     df_daily['Date'] = df_daily['Date_obj'].dt.strftime('%d/%m/%Y')
-                    
-                    # התיקון הקריטי: חישוב תשואה יומית (סגירה נוכחית חלקי סגירה של אתמול)
                     df_daily['Yield'] = (df_daily['Close'] / df_daily['Close'].shift(1)) - 1
                     
                     all_results[sym] = df_daily[['Date', 'Open', 'Close', 'Yield']]
