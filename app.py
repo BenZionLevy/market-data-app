@@ -105,6 +105,3 @@ if st.button("הפק אקסל"):
     except Exception as e:
         st.error(f"שגיאה: {e}")
 
-yfinance
-pandas
-openpyxl
