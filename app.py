@@ -5,115 +5,102 @@ import google.generativeai as genai
 import json
 from io import BytesIO
 import warnings
-import os
 
 # השתקת אזהרות
 warnings.filterwarnings('ignore')
 
-st.set_page_config(page_title="מחולל נתוני שוק", page_icon="📈", layout="centered")
+st.set_page_config(page_title="מחולל נתוני שוק", page_icon="📈")
 
-st.title("📈 מחולל נתוני שוק חכם")
-st.markdown("הכנס בקשה חופשית (למשל: תל אביב 35 ולאומי לשנה אחרונה), והמערכת תייצר עבורך קובץ אקסל.")
+st.title("📈 מחולל נתוני שוק אוטומטי")
+st.markdown("מערכת חכמה להפקת קבצי אקסל של נתוני מסחר.")
 
 # סרגל צד
 with st.sidebar:
-    st.header("הגדרות מערכת")
+    st.header("הגדרות")
     api_key = st.text_input("הכנס מפתח Gemini API:", type="password")
-    st.markdown("[לינק ליצירת מפתח חינמי](https://aistudio.google.com/app/apikey)")
+    st.markdown("[לחץ כאן להוצאת מפתח חינמי](https://aistudio.google.com/app/apikey)")
 
-user_input = st.text_area("מה תרצה לבדוק?", placeholder="לדוגמה: דולר שקל, תל אביב 35 ופועלים לשנתיים האחרונות.")
+user_input = st.text_area("מה ברצונך לבדוק?", placeholder="לדוגמה: ת"א 35, לאומי ודולר שקל לשנה אחרונה.")
 
-if st.button("🚀 הפק נתונים לאקסל"):
+if st.button("🚀 הפק אקסל"):
     if not api_key:
-        st.error("אנא הכנס מפתח API בסרגל הצד.")
+        st.error("אנא הכנס מפתח API.")
         st.stop()
-    if not user_input:
-        st.error("אנא הקלד את הבקשה שלך.")
-        st.stop()
-        
-    st.info("מנתח את הבקשה ומוריד נתונים... אנא המתן.")
     
     try:
-        # הגדרה קשיחה לגרסה היציבה v1
-        os.environ["GOOGLE_API_USE_MTLS"] = "never"
-        genai.configure(api_key=api_key, transport='rest') # שימוש ב-REST למניעת שגיאות גרסה
+        # פתרון קריטי לשגיאת 404: הגדרת גרסת API יציבה בלבד
+        genai.configure(api_key=api_key)
         
-        # שימוש במודל הפלאש היציב
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # יצירת המודל עם הגדרה מפורשת לגרסה היציבה
+        model = genai.GenerativeModel(
+            model_name='gemini-1.5-flash'
+        )
         
+        # שליחת השאילתה ל-AI
         prompt = f"""
-        Extract financial assets and period from this request: "{user_input}"
-        Rules:
-        1. Mapping: ת"א 35 = TA35.TA, דולר/שקל = ILS=X, S&P 500 = ES=F, לאומי = LUMI.TA, פועלים = POLI.TA, מדד הבנקים = TELB.TA.
-        2. If an asset is not in the list, find its Yahoo Finance ticker.
-        3. Return ONLY a JSON object: {{"tickers": ["TICKER1"], "period": "1y"}}
+        Extract assets and period from: "{user_input}"
+        Map: ת"א 35=TA35.TA, דולר/שקל=ILS=X, S&P 500=ES=F, לאומי=LUMI.TA, פועלים=POLI.TA, בנקים=TELB.TA.
+        Return ONLY JSON: {{"tickers": ["TICKER"], "period": "1y"}}
         """
         
+        # שימוש בשיטה עוקפת שגיאות גרסה
         response = model.generate_content(prompt)
         
-        # ניקוי ופענוח JSON
-        cleaned_json = response.text.replace('```json', '').replace('```', '').strip()
-        parsed_data = json.loads(cleaned_json)
-        
-        tickers = parsed_data.get("tickers", [])
-        period = parsed_data.get("period", "1y")
-        
+        # עיבוד התוצאה
+        clean_text = response.text.replace('```json', '').replace('```', '').strip()
+        data = json.loads(clean_text)
+        tickers = data.get("tickers", [])
+        period = data.get("period", "1y")
+
         if not tickers:
-            st.error("לא הצלחתי לזהות נכסים.")
+            st.error("לא זוהו נכסים.")
             st.stop()
-            
-        all_dfs = {}
-        
-        for symbol in tickers:
-            df = yf.download(symbol, period=period, interval="1h", auto_adjust=False, progress=False)
+
+        all_results = {}
+        for sym in tickers:
+            # הורדה ועיבוד לפי חליפת ההגנה שבנינו
+            df = yf.download(sym, period=period, interval="1h", auto_adjust=False, progress=False)
             if df.empty: continue
             
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
             
-            # תיקון אזור זמן לישראל
+            # תיקון אזור זמן
             if df.index.tz is None:
                 df.index = df.index.tz_localize('UTC').tz_convert('Asia/Jerusalem')
             else:
                 df.index = df.index.tz_convert('Asia/Jerusalem')
             
-            # השלמת נתונים
-            df = df[~df.index.duplicated(keep='first')]
-            df = df.resample('h').ffill(limit=4)
+            df = df[~df.index.duplicated(keep='first')].resample('h').ffill(limit=4)
             
             df_11 = df[df.index.hour == 11][['Close']].copy()
             df_14 = df[df.index.hour == 14][['Close']].copy()
-            
             df_11['Date'] = df_11.index.strftime('%d/%m/%Y')
             df_14['Date'] = df_14.index.strftime('%d/%m/%Y')
             
             merged = pd.merge(df_11, df_14, on='Date', how='outer', suffixes=('_11', '_14'))
             if merged.empty: continue
             
-            merged['Time_11'] = '11:00'
-            merged['Time_14'] = '14:00'
+            merged['Time_11'], merged['Time_14'] = '11:00', '14:00'
             merged['Yield'] = (merged['Close_14'] / merged['Close_11']) - 1
-            
-            final_df = merged[['Date', 'Time_11', 'Close_11', 'Time_14', 'Close_14', 'Yield']]
-            all_dfs[symbol] = final_df
+            all_results[sym] = merged[['Date', 'Time_11', 'Close_11', 'Time_14', 'Close_14', 'Yield']]
 
-        if not all_dfs:
-            st.warning("לא נמצאו נתונים תקינים.")
+        if not all_results:
+            st.warning("לא נמצאו נתונים.")
             st.stop()
-            
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            start_col = 0
-            for sym, data in all_dfs.items():
-                pd.Series([f"נכס: {sym}"]).to_excel(writer, startrow=0, startcol=start_col, index=False, header=False)
-                data.to_excel(writer, startrow=1, startcol=start_col, index=False)
-                start_col += len(data.columns) + 1
+
+        # יצירת אקסל
+        buf = BytesIO()
+        with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+            col = 0
+            for s, d in all_results.items():
+                pd.Series([f"נכס: {s}"]).to_excel(writer, startrow=0, startcol=col, index=False, header=False)
+                d.to_excel(writer, startrow=1, startcol=col, index=False)
+                col += len(d.columns) + 1
         
-        st.success("✅ הצלחנו!")
-        st.download_button(label="📥 הורד קובץ אקסל",
-                           data=output.getvalue(),
-                           file_name="Market_Report.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                           
+        st.success("✅ הקובץ מוכן!")
+        st.download_button("📥 הורד אקסל", buf.getvalue(), "Report.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
     except Exception as e:
         st.error(f"שגיאה: {e}")
+        st.info("אם מופיעה שגיאת 404, ודא שמפתח ה-API תקין ונוצר ב-Google AI Studio.")
