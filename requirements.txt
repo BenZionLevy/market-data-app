@@ -2,6 +2,4 @@ streamlit
 yfinance
 pandas
 openpyxl
-google-generativeai>=0.5.0
-grpcio
-grpcio-status
+google-generativeai==0.7.2
