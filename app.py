@@ -20,7 +20,6 @@ with st.sidebar:
     api_key = st.text_input("הכנס מפתח Gemini API:", type="password")
     st.markdown("[לחץ כאן להוצאת מפתח חינמי](https://aistudio.google.com/app/apikey)")
 
-# תיקון מחרוזות למניעת שגיאות סינטקס
 instruction = "לדוגמה: תא 35, לאומי ודולר שקל לשנה אחרונה."
 user_input = st.text_area("מה ברצונך לבדוק?", placeholder=instruction)
 
@@ -30,10 +29,12 @@ if st.button("🚀 הפק אקסל"):
         st.stop()
     
     try:
-        # פתרון קריטי לשגיאת 404: שימוש בשיטת REST והגדרת גרסה יציבה
+        # פתרון קצה לשגיאת 404: הגדרה מפורשת של גרסת ה-API
+        from google.generativeai.types import RequestOptions
+        
         genai.configure(api_key=api_key, transport='rest')
         
-        # אתחול המודל היציב gemini-1.5-flash
+        # שימוש ב-RequestOptions כדי לכפות את גרסת v1 היציבה
         model = genai.GenerativeModel('gemini-1.5-flash')
         
         prompt = f"""
@@ -42,8 +43,11 @@ if st.button("🚀 הפק אקסל"):
         Return ONLY JSON: {{"tickers": ["TICKER"], "period": "1y"}}
         """
         
-        # יצירת תוכן
-        response = model.generate_content(prompt)
+        # הרצה עם הגדרה מפורשת לגרסה v1
+        response = model.generate_content(
+            prompt,
+            request_options=RequestOptions(api_version='v1')
+        )
         
         # ניקוי ופענוח JSON
         clean_text = response.text.replace('```json', '').replace('```', '').strip()
@@ -57,11 +61,10 @@ if st.button("🚀 הפק אקסל"):
 
         all_results = {}
         for sym in tickers:
-            # הורדה ועיבוד נתונים
+            # הורדה ועיבוד נתונים עם חליפת ההגנה
             df = yf.download(sym, period=period, interval="1h", auto_adjust=False, progress=False)
             if df.empty: continue
             
-            # שיטוח עמודות
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
             
@@ -71,16 +74,14 @@ if st.button("🚀 הפק אקסל"):
             else:
                 df.index = df.index.tz_convert('Asia/Jerusalem')
             
-            # השלמת נתונים חסרים (Forward Fill)
+            # השלמת נתונים חסרים
             df = df[~df.index.duplicated(keep='first')].resample('h').ffill(limit=4)
             
-            # חילוץ שעות 11:00 ו-14:00
             df_11 = df[df.index.hour == 11][['Close']].copy()
             df_14 = df[df.index.hour == 14][['Close']].copy()
             df_11['Date'] = df_11.index.strftime('%d/%m/%Y')
             df_14['Date'] = df_14.index.strftime('%d/%m/%Y')
             
-            # מיזוג ימים
             merged = pd.merge(df_11, df_14, on='Date', how='outer', suffixes=('_11', '_14'))
             if merged.empty: continue
             
@@ -89,10 +90,9 @@ if st.button("🚀 הפק אקסל"):
             all_results[sym] = merged[['Date', 'Time_11', 'Close_11', 'Time_14', 'Close_14', 'Yield']]
 
         if not all_results:
-            st.warning("לא נמצאו נתונים תקינים ביאהו פייננס.")
+            st.warning("לא נמצאו נתונים תקינים.")
             st.stop()
 
-        # כתיבה לאקסל
         buf = BytesIO()
         with pd.ExcelWriter(buf, engine='openpyxl') as writer:
             col = 0
@@ -101,7 +101,7 @@ if st.button("🚀 הפק אקסל"):
                 d.to_excel(writer, startrow=1, startcol=col, index=False)
                 col += len(d.columns) + 1
         
-        st.success("✅ הקובץ מוכן להורדה!")
+        st.success("✅ הקובץ מוכן!")
         st.download_button("📥 הורד אקסל", buf.getvalue(), "Market_Report.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     except Exception as e:
