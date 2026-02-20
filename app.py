@@ -12,10 +12,10 @@ warnings.filterwarnings('ignore')
 # הגדרת העמוד
 st.set_page_config(page_title="מחולל נתוני שוק", page_icon="📊", layout="centered")
 
-# --- עיצוב מתקדם: יישור לימין מוחלט ותמונת רקע בהירה ---
+# --- עיצוב מתקדם: תמונת רקע, יישור לימין, והבלטת תיבת החיפוש ---
 st.markdown("""
 <style>
-    /* תמונת רקע בהירה ונקייה */
+    /* תמונת רקע */
     .stApp {
         background-image: url("https://images.unsplash.com/photo-1579532537598-459ecdaf39cc?q=80&w=2000&auto=format&fit=crop");
         background-size: cover;
@@ -23,7 +23,7 @@ st.markdown("""
         background-attachment: fixed;
     }
     
-    /* קופסה לבנה שקופה חלקית */
+    /* קופסה מרכזית חצי שקופה */
     .block-container { 
         background-color: rgba(255, 255, 255, 0.95);
         padding: 3rem; 
@@ -32,12 +32,32 @@ st.markdown("""
         box-shadow: 0 8px 16px rgba(0,0,0,0.1);
     }
 
-    /* כפיית כיווניות ויישור לימין על כל האתר */
-    .block-container, p, h1, h2, h3, h4, h5, h6, label, .stTextInput input, .stAlert, div[data-testid="stForm"] {
+    /* יישור לימין */
+    .block-container, p, h1, h2, h3, h4, h5, h6, label, .stAlert, div[data-testid="stForm"] {
         direction: rtl !important;
         text-align: right !important;
     }
     
+    /* ---- הבלטת תיבת ההקלדה ---- */
+    .stTextInput input {
+        direction: rtl !important;
+        text-align: right !important;
+        border: 2px solid #007BFF !important; /* מסגרת כחולה בולטת */
+        border-radius: 10px !important;
+        padding: 15px !important;
+        font-size: 18px !important; /* טקסט גדול יותר */
+        box-shadow: 0 0 15px rgba(0, 123, 255, 0.2) !important; /* צללית זוהרת */
+        background-color: #f4f9ff !important; /* רקע תכלת עדין */
+        transition: all 0.3s ease-in-out;
+    }
+    
+    /* אנימציה כשהמשתמש לוחץ על התיבה */
+    .stTextInput input:focus {
+        border-color: #17B169 !important;
+        box-shadow: 0 0 20px rgba(23, 177, 105, 0.4) !important;
+        background-color: #ffffff !important;
+    }
+
     /* עיצוב כפתורים */
     [data-testid="stDownloadButton"] button {
         background-color: #17B169; color: white; border-radius: 8px; font-weight: bold; width: 100%; margin-top: 15px; border: none; font-size: 16px;
@@ -50,25 +70,25 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# אתחול זיכרון זמני (Session State) לשמירת האקסל
+# אתחול זיכרון זמני (Session State)
 if 'excel_file' not in st.session_state:
     st.session_state.excel_file = None
     st.session_state.success_message = ""
     st.session_state.interval_info = ""
 
-# כותרת ללא סמיילי
 st.title("מחולל נתוני שוק אוטומטי")
 st.markdown("ברוכים הבאים למערכת החכמה להפקת נתוני מסחר. המערכת מבינה שפה חופשית ותכין עבורכם קובץ אקסל מסודר (יומי או שעתי).")
 
-# הודעת זמנים קצרה ופשוטה
-st.info("🕒 **שימו לב:** כל הזמנים המופיעים בקובץ הם לפי **שעון ישראל** בלבד.")
+# הודעת זמנים מעודכנת
+st.info("🕒 **שימו לב:** נתונים שעתיים מתורגמים תמיד ל**שעון ישראל**. נתונים יומיים מוצגים לפי תאריך יום המסחר המקורי של הבורסה.")
 st.divider()
 
 st.subheader("מה ברצונך לבדוק?")
 instruction = "לדוגמה: תא 35 ודולר לשנה אחרונה / פועלים ולאומי לחודש אחרון בין 11:00 ל-14:00."
 
 with st.form(key='search_form'):
-    user_input = st.text_input("הקלד את בקשתך כאן ולחץ אנטר (Enter) או על הכפתור:", placeholder=instruction)
+    # התיבה הזו תקבל עכשיו את העיצוב הבולט שהגדרנו למעלה
+    user_input = st.text_input("הקלד את בקשתך כאן ולחץ אנטר (Enter):", placeholder=instruction)
     submit_button = st.form_submit_button("🚀 נתח והפק אקסל")
 
 if submit_button:
@@ -122,15 +142,18 @@ if submit_button:
                 df = yf.download(sym, period=period, interval=interval, auto_adjust=False, progress=False)
                 if df.empty: continue
                 
+                # שיטוח עמודות
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
                 
-                if df.index.tz is None:
-                    df.index = df.index.tz_localize('UTC').tz_convert('Asia/Jerusalem')
-                else:
-                    df.index = df.index.tz_convert('Asia/Jerusalem')
-                
+                # לוגיקה מפוצלת לפי רזולוציה
                 if interval == "1h":
+                    # המרה לשעון ישראל - *רק* לנתונים שעתיים
+                    if df.index.tz is None:
+                        df.index = df.index.tz_localize('UTC').tz_convert('Asia/Jerusalem')
+                    else:
+                        df.index = df.index.tz_convert('Asia/Jerusalem')
+                        
                     df = df[~df.index.duplicated(keep='first')].resample('h').ffill(limit=4)
                     df_start = df[df.index.hour == start_hour][['Close']].copy()
                     df_end = df[df.index.hour == end_hour][['Close']].copy()
@@ -154,6 +177,7 @@ if submit_button:
                     all_results[sym] = merged[cols]
                     
                 else:
+                    # נתונים יומיים: אין המרת אזור זמן, לוקחים את תאריך יום המסחר כמו שהוא
                     df = df[~df.index.duplicated(keep='first')]
                     df_daily = df[['Open', 'Close']].copy()
                     
