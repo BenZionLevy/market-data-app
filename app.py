@@ -74,7 +74,7 @@ st.info("🕒 **שימו לב:** נתונים שעתיים מתורגמים תמ
 st.divider()
 
 st.subheader("מה ברצונך לבדוק?")
-instruction = "לדוגמה: תא 35 לשנה אחרונה / פועלים בין 11:00 ל-14:00 / מדד SP500 כל שעה."
+instruction = "לדוגמה: תא 35 לשנה אחרונה / פועלים בין 11:00 ל-14:00 / דולר שקל חצי שנה כל שעה."
 
 with st.form(key='search_form'):
     user_input = st.text_input("הקלד את בקשתך כאן ולחץ אנטר (Enter):", placeholder=instruction)
@@ -96,7 +96,6 @@ if submit_button:
             genai.configure(api_key=api_key, transport='rest')
             model = genai.GenerativeModel('gemini-2.5-flash')
             
-            # פרומפט משודרג המכיל "mode" לקביעת סוג הדוח
             prompt = f"""
             Analyze the user request: "{user_input}"
             Extract the parameters and return ONLY a valid JSON.
@@ -125,7 +124,6 @@ if submit_button:
             start_hour = data.get("start_hour", 11)
             end_hour = data.get("end_hour", 14)
 
-            # קביעת הרזולוציה ליאהו פייננס בהתאם למצב
             interval = "1h" if mode in ["compare_hours", "all_hours"] else "1d"
 
             if not tickers:
@@ -141,7 +139,6 @@ if submit_button:
                     df.columns = df.columns.get_level_values(0)
                 
                 if mode == "compare_hours":
-                    # המרה לשעון ישראל
                     if df.index.tz is None:
                         df.index = df.index.tz_localize('UTC').tz_convert('Asia/Jerusalem')
                     else:
@@ -170,26 +167,23 @@ if submit_button:
                     all_results[sym] = merged[cols]
                 
                 elif mode == "all_hours":
-                    # --- המצב החדש: משיכת כל השעות ברצף ---
                     if df.index.tz is None:
                         df.index = df.index.tz_localize('UTC').tz_convert('Asia/Jerusalem')
                     else:
                         df.index = df.index.tz_convert('Asia/Jerusalem')
                         
                     df = df[~df.index.duplicated(keep='first')].resample('h').ffill(limit=4)
-                    # הסרת שעות ריקות שבהן הבורסה סגורה
                     df.dropna(subset=['Close'], inplace=True)
                     
-                    df_all = pd.DataFrame()
-                    df_all['Date'] = df.index.strftime('%d/%m/%Y')
-                    df_all['Time'] = df.index.strftime('%H:%M')
-                    df_all['Close'] = df['Close']
-                    # התשואה מחושבת מול השעה הקודמת
-                    df_all['Yield'] = (df['Close'] / df['Close'].shift(1)) - 1
+                    # התיקון: בניית הטבלה ישירות על העתק של הנתונים כדי לשמור על סנכרון שורות
+                    df_all = df[['Close']].copy()
+                    df_all['Date'] = df_all.index.strftime('%d/%m/%Y')
+                    df_all['Time'] = df_all.index.strftime('%H:%M')
+                    df_all['Yield'] = (df_all['Close'] / df_all['Close'].shift(1)) - 1
                     
                     all_results[sym] = df_all[['Date', 'Time', 'Close', 'Yield']]
                     
-                else: # מצב יומי
+                else: 
                     df = df[~df.index.duplicated(keep='first')]
                     df_daily = df[['Open', 'Close']].copy()
                     
@@ -217,7 +211,6 @@ if submit_button:
             st.session_state.excel_file = buf.getvalue()
             st.session_state.success_message = f"✅ סיימתי! משכתי נתונים עבור {len(all_results)} נכסים."
             
-            # עדכון הודעת התוצאה למשתמש
             if mode == "compare_hours":
                 st.session_state.interval_info = f"📊 הקובץ כולל השוואה בין השעה {start_hour}:00 לשעה {end_hour}:00."
             elif mode == "all_hours":
