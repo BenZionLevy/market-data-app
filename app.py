@@ -9,13 +9,10 @@ import re
 
 warnings.filterwarnings('ignore')
 
-# הגדרת העמוד
 st.set_page_config(page_title="מחולל נתוני שוק", page_icon="📊", layout="centered")
 
-# --- עיצוב מתקדם: תמונת רקע, יישור לימין, והבלטת תיבת החיפוש ---
 st.markdown("""
 <style>
-    /* תמונת רקע */
     .stApp {
         background-image: url("https://images.unsplash.com/photo-1579532537598-459ecdaf39cc?q=80&w=2000&auto=format&fit=crop");
         background-size: cover;
@@ -23,7 +20,6 @@ st.markdown("""
         background-attachment: fixed;
     }
     
-    /* קופסה מרכזית חצי שקופה */
     .block-container { 
         background-color: rgba(255, 255, 255, 0.95);
         padding: 3rem; 
@@ -32,33 +28,29 @@ st.markdown("""
         box-shadow: 0 8px 16px rgba(0,0,0,0.1);
     }
 
-    /* יישור לימין */
     .block-container, p, h1, h2, h3, h4, h5, h6, label, .stAlert, div[data-testid="stForm"] {
         direction: rtl !important;
         text-align: right !important;
     }
     
-    /* ---- הבלטת תיבת ההקלדה ---- */
     .stTextInput input {
         direction: rtl !important;
         text-align: right !important;
-        border: 2px solid #007BFF !important; /* מסגרת כחולה בולטת */
+        border: 2px solid #007BFF !important;
         border-radius: 10px !important;
         padding: 15px !important;
-        font-size: 18px !important; /* טקסט גדול יותר */
-        box-shadow: 0 0 15px rgba(0, 123, 255, 0.2) !important; /* צללית זוהרת */
-        background-color: #f4f9ff !important; /* רקע תכלת עדין */
+        font-size: 18px !important;
+        box-shadow: 0 0 15px rgba(0, 123, 255, 0.2) !important;
+        background-color: #f4f9ff !important;
         transition: all 0.3s ease-in-out;
     }
     
-    /* אנימציה כשהמשתמש לוחץ על התיבה */
     .stTextInput input:focus {
         border-color: #17B169 !important;
         box-shadow: 0 0 20px rgba(23, 177, 105, 0.4) !important;
         background-color: #ffffff !important;
     }
 
-    /* עיצוב כפתורים */
     [data-testid="stDownloadButton"] button {
         background-color: #17B169; color: white; border-radius: 8px; font-weight: bold; width: 100%; margin-top: 15px; border: none; font-size: 16px;
     }
@@ -70,7 +62,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# אתחול זיכרון זמני (Session State)
 if 'excel_file' not in st.session_state:
     st.session_state.excel_file = None
     st.session_state.success_message = ""
@@ -79,15 +70,13 @@ if 'excel_file' not in st.session_state:
 st.title("מחולל נתוני שוק אוטומטי")
 st.markdown("ברוכים הבאים למערכת החכמה להפקת נתוני מסחר. המערכת מבינה שפה חופשית ותכין עבורכם קובץ אקסל מסודר (יומי או שעתי).")
 
-# הודעת זמנים מעודכנת
 st.info("🕒 **שימו לב:** נתונים שעתיים מתורגמים תמיד ל**שעון ישראל**. נתונים יומיים מוצגים לפי תאריך יום המסחר המקורי של הבורסה.")
 st.divider()
 
 st.subheader("מה ברצונך לבדוק?")
-instruction = "לדוגמה: תא 35 ודולר לשנה אחרונה / פועלים ולאומי לחודש אחרון בין 11:00 ל-14:00."
+instruction = "לדוגמה: תא 35 לשנה אחרונה / פועלים בין 11:00 ל-14:00 / מדד SP500 כל שעה."
 
 with st.form(key='search_form'):
-    # התיבה הזו תקבל עכשיו את העיצוב הבולט שהגדרנו למעלה
     user_input = st.text_input("הקלד את בקשתך כאן ולחץ אנטר (Enter):", placeholder=instruction)
     submit_button = st.form_submit_button("🚀 נתח והפק אקסל")
 
@@ -107,18 +96,21 @@ if submit_button:
             genai.configure(api_key=api_key, transport='rest')
             model = genai.GenerativeModel('gemini-2.5-flash')
             
+            # פרומפט משודרג המכיל "mode" לקביעת סוג הדוח
             prompt = f"""
             Analyze the user request: "{user_input}"
-            Extract the required financial data parameters and return ONLY a valid JSON object.
+            Extract the parameters and return ONLY a valid JSON.
             Map assets to tickers: ת"א 35=TA35.TA, דולר/שקל=ILS=X, S&P 500=ES=F, לאומי=LUMI.TA, פועלים=POLI.TA, בנקים=TELB.TA. 
-            CRITICAL RULE: The "tickers" array MUST contain ONLY official English/Symbol tickers. NEVER return Hebrew text in the "tickers" array.
+            CRITICAL RULE: The "tickers" array MUST contain ONLY official English/Symbol tickers.
             Rules for JSON fields:
-            - "tickers": list of strings (tickers).
+            - "tickers": list of strings.
             - "period": valid yfinance period (e.g., "1mo", "1y", "729d"). If hourly requested and period is over 2 years, max is "729d".
-            - "interval": "1h" if user asks for specific hours or intraday. "1d" if user asks for daily data or doesn't mention hours.
-            - "start_hour": integer (0-23), only if interval is "1h". Default is 11.
-            - "end_hour": integer (0-23), only if interval is "1h". Default is 14.
-            Example: {{"tickers": ["TA35.TA"], "period": "1mo", "interval": "1h", "start_hour": 11, "end_hour": 14}}
+            - "mode": string. Choose "compare_hours" if user asks to compare specific hours (e.g., between 10 and 12). Choose "all_hours" if user asks for every hour continuously (כל שעה). Choose "daily" if daily resolution or no hours mentioned.
+            - "start_hour": integer (0-23), only if mode is "compare_hours". Default is 11.
+            - "end_hour": integer (0-23), only if mode is "compare_hours". Default is 14.
+            Example 1: {{"tickers": ["TA35.TA"], "period": "1mo", "mode": "compare_hours", "start_hour": 11, "end_hour": 14}}
+            Example 2: {{"tickers": ["ES=F"], "period": "1y", "mode": "all_hours"}}
+            Example 3: {{"tickers": ["LUMI.TA"], "period": "3mo", "mode": "daily"}}
             """
             
             response = model.generate_content(prompt)
@@ -129,9 +121,12 @@ if submit_button:
             tickers = [t for t in raw_tickers if not re.search(r'[\u0590-\u05FF]', t)]
             
             period = data.get("period", "1y")
-            interval = data.get("interval", "1d")
+            mode = data.get("mode", "daily")
             start_hour = data.get("start_hour", 11)
             end_hour = data.get("end_hour", 14)
+
+            # קביעת הרזולוציה ליאהו פייננס בהתאם למצב
+            interval = "1h" if mode in ["compare_hours", "all_hours"] else "1d"
 
             if not tickers:
                 st.error("❌ לא הצלחתי לזהות נכסים באנגלית בבקשה שלך. נסה לנסח שוב.")
@@ -142,13 +137,11 @@ if submit_button:
                 df = yf.download(sym, period=period, interval=interval, auto_adjust=False, progress=False)
                 if df.empty: continue
                 
-                # שיטוח עמודות
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
                 
-                # לוגיקה מפוצלת לפי רזולוציה
-                if interval == "1h":
-                    # המרה לשעון ישראל - *רק* לנתונים שעתיים
+                if mode == "compare_hours":
+                    # המרה לשעון ישראל
                     if df.index.tz is None:
                         df.index = df.index.tz_localize('UTC').tz_convert('Asia/Jerusalem')
                     else:
@@ -175,9 +168,28 @@ if submit_button:
                     
                     cols = ['Date', f'Time_{start_hour}', 'Close_start', f'Time_{end_hour}', 'Close_end', 'Yield']
                     all_results[sym] = merged[cols]
+                
+                elif mode == "all_hours":
+                    # --- המצב החדש: משיכת כל השעות ברצף ---
+                    if df.index.tz is None:
+                        df.index = df.index.tz_localize('UTC').tz_convert('Asia/Jerusalem')
+                    else:
+                        df.index = df.index.tz_convert('Asia/Jerusalem')
+                        
+                    df = df[~df.index.duplicated(keep='first')].resample('h').ffill(limit=4)
+                    # הסרת שעות ריקות שבהן הבורסה סגורה
+                    df.dropna(subset=['Close'], inplace=True)
                     
-                else:
-                    # נתונים יומיים: אין המרת אזור זמן, לוקחים את תאריך יום המסחר כמו שהוא
+                    df_all = pd.DataFrame()
+                    df_all['Date'] = df.index.strftime('%d/%m/%Y')
+                    df_all['Time'] = df.index.strftime('%H:%M')
+                    df_all['Close'] = df['Close']
+                    # התשואה מחושבת מול השעה הקודמת
+                    df_all['Yield'] = (df['Close'] / df['Close'].shift(1)) - 1
+                    
+                    all_results[sym] = df_all[['Date', 'Time', 'Close', 'Yield']]
+                    
+                else: # מצב יומי
                     df = df[~df.index.duplicated(keep='first')]
                     df_daily = df[['Open', 'Close']].copy()
                     
@@ -203,9 +215,13 @@ if submit_button:
                     col += len(d.columns) + 1
             
             st.session_state.excel_file = buf.getvalue()
-            st.session_state.success_message = f"✅ סיימתי! משכתי נתונים נקיים ומסודרים עבור {len(all_results)} נכסים."
-            if interval == "1h":
+            st.session_state.success_message = f"✅ סיימתי! משכתי נתונים עבור {len(all_results)} נכסים."
+            
+            # עדכון הודעת התוצאה למשתמש
+            if mode == "compare_hours":
                 st.session_state.interval_info = f"📊 הקובץ כולל השוואה בין השעה {start_hour}:00 לשעה {end_hour}:00."
+            elif mode == "all_hours":
+                st.session_state.interval_info = "📊 הקובץ כולל נתונים רציפים עבור כל שעת מסחר."
             else:
                 st.session_state.interval_info = "📊 הקובץ כולל נתונים ברזולוציה יומית."
 
