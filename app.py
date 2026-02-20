@@ -34,7 +34,7 @@ if st.button("🚀 הפק נתונים לאקסל"):
     try:
         # הגדרת ג'ימיני
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         prompt = f"""
         Extract the financial assets and time period from this user request: "{user_input}"
