@@ -9,29 +9,33 @@ import re
 
 warnings.filterwarnings('ignore')
 
-# הגדרת העמוד (חובה בשורה הראשונה)
-st.set_page_config(page_title="מחולל נתוני שוק", page_icon="📈", layout="centered")
+# הגדרת העמוד
+st.set_page_config(page_title="מחולל נתוני שוק", page_icon="📊", layout="centered")
 
-# --- עיצוב מתקדם: תמונת רקע מדהימה ויישור לעברית ---
+# --- עיצוב מתקדם: יישור לימין מוחלט ותמונת רקע בהירה ---
 st.markdown("""
 <style>
-    /* 1. תמונת רקע על כל המסך */
+    /* תמונת רקע בהירה ונקייה */
     .stApp {
-        background-image: url("https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?q=80&w=2070&auto=format&fit=crop");
+        background-image: url("https://images.unsplash.com/photo-1579532537598-459ecdaf39cc?q=80&w=2000&auto=format&fit=crop");
         background-size: cover;
         background-position: center;
         background-attachment: fixed;
     }
     
-    /* 2. יצירת קופסה לבנה חצי-שקופה ("זכוכית") כדי שהטקסט יהיה קריא */
+    /* קופסה לבנה שקופה חלקית */
     .block-container { 
-        direction: rtl; 
-        text-align: right; 
-        background-color: rgba(255, 255, 255, 0.92); /* רמת השקיפות */
+        background-color: rgba(255, 255, 255, 0.95);
         padding: 3rem; 
         border-radius: 15px; 
         margin-top: 2rem;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    }
+
+    /* כפיית כיווניות ויישור לימין על כל האתר */
+    .block-container, p, h1, h2, h3, h4, h5, h6, label, .stTextInput input, .stAlert, div[data-testid="stForm"] {
+        direction: rtl !important;
+        text-align: right !important;
     }
     
     /* עיצוב כפתורים */
@@ -46,26 +50,27 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# אתחול זיכרון זמני (Session State) כדי לשמור את האקסל לאחר הלחיצה
+# אתחול זיכרון זמני (Session State) לשמירת האקסל
 if 'excel_file' not in st.session_state:
     st.session_state.excel_file = None
     st.session_state.success_message = ""
     st.session_state.interval_info = ""
 
-st.title("📈 מחולל נתוני שוק אוטומטי")
+# כותרת ללא סמיילי
+st.title("מחולל נתוני שוק אוטומטי")
 st.markdown("ברוכים הבאים למערכת החכמה להפקת נתוני מסחר. המערכת מבינה שפה חופשית ותכין עבורכם קובץ אקסל מסודר (יומי או שעתי).")
-st.info("🕒 **שימו לב:** כל השעות במערכת (בבקשה שלכם ובקובץ האקסל) הן לפי **שעון ישראל**. גם עבור נכסים בחו\"ל, המערכת מתרגמת את הזמן אוטומטית לשעון המקומי שלנו.")
+
+# הודעת זמנים קצרה ופשוטה
+st.info("🕒 **שימו לב:** כל הזמנים המופיעים בקובץ הם לפי **שעון ישראל** בלבד.")
 st.divider()
 
 st.subheader("מה ברצונך לבדוק?")
 instruction = "לדוגמה: תא 35 ודולר לשנה אחרונה / פועלים ולאומי לחודש אחרון בין 11:00 ל-14:00."
 
-# שימוש בטופס (Form) כדי שלחיצה על אנטר תשגר את הבקשה
 with st.form(key='search_form'):
     user_input = st.text_input("הקלד את בקשתך כאן ולחץ אנטר (Enter) או על הכפתור:", placeholder=instruction)
     submit_button = st.form_submit_button("🚀 נתח והפק אקסל")
 
-# מה קורה כשהמשתמש שולח את הבקשה (אנטר או לחיצה)
 if submit_button:
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
@@ -173,18 +178,16 @@ if submit_button:
                     d.to_excel(writer, startrow=1, startcol=col, index=False)
                     col += len(d.columns) + 1
             
-            # במקום להדפיס מיד, נשמור את התוצאות בזיכרון של האתר
             st.session_state.excel_file = buf.getvalue()
             st.session_state.success_message = f"✅ סיימתי! משכתי נתונים נקיים ומסודרים עבור {len(all_results)} נכסים."
             if interval == "1h":
                 st.session_state.interval_info = f"📊 הקובץ כולל השוואה בין השעה {start_hour}:00 לשעה {end_hour}:00."
             else:
-                st.session_state.interval_info = "📊 הקובץ כולל נתונים ברזולוציה יומית (מחיר פתיחה מול סגירה)."
+                st.session_state.interval_info = "📊 הקובץ כולל נתונים ברזולוציה יומית."
 
     except Exception as e:
         st.error(f"❌ אירעה שגיאה בעיבוד. נסה שוב בעוד כמה שניות. (פירוט טכני: {e})")
 
-# אם קיים קובץ מוכן בזיכרון, נציג אותו תמיד (גם אחרי שלוחצים על כפתור הורדה)
 if st.session_state.excel_file is not None:
     st.success(st.session_state.success_message)
     st.info(st.session_state.interval_info)
