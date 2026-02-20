@@ -9,32 +9,64 @@ import re
 
 warnings.filterwarnings('ignore')
 
+# הגדרת העמוד (חובה בשורה הראשונה)
 st.set_page_config(page_title="מחולל נתוני שוק", page_icon="📈", layout="centered")
 
+# --- עיצוב מתקדם: תמונת רקע מדהימה ויישור לעברית ---
 st.markdown("""
 <style>
-    .block-container { direction: rtl; text-align: right; }
+    /* 1. תמונת רקע על כל המסך */
+    .stApp {
+        background-image: url("https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?q=80&w=2070&auto=format&fit=crop");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+    }
+    
+    /* 2. יצירת קופסה לבנה חצי-שקופה ("זכוכית") כדי שהטקסט יהיה קריא */
+    .block-container { 
+        direction: rtl; 
+        text-align: right; 
+        background-color: rgba(255, 255, 255, 0.92); /* רמת השקיפות */
+        padding: 3rem; 
+        border-radius: 15px; 
+        margin-top: 2rem;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+    }
+    
+    /* עיצוב כפתורים */
     [data-testid="stDownloadButton"] button {
-        background-color: #17B169; color: white; border-radius: 8px; font-weight: bold; width: 100%; margin-top: 15px; border: none;
+        background-color: #17B169; color: white; border-radius: 8px; font-weight: bold; width: 100%; margin-top: 15px; border: none; font-size: 16px;
     }
     [data-testid="stDownloadButton"] button:hover { background-color: #128C53; color: white; }
-    .stButton > button { border-radius: 8px; font-weight: bold; }
+    [data-testid="stFormSubmitButton"] button {
+        border-radius: 8px; font-weight: bold; width: 100%; background-color: #007BFF; color: white;
+    }
+    [data-testid="stFormSubmitButton"] button:hover { background-color: #0056b3; color: white; }
 </style>
 """, unsafe_allow_html=True)
 
+# אתחול זיכרון זמני (Session State) כדי לשמור את האקסל לאחר הלחיצה
+if 'excel_file' not in st.session_state:
+    st.session_state.excel_file = None
+    st.session_state.success_message = ""
+    st.session_state.interval_info = ""
+
 st.title("📈 מחולל נתוני שוק אוטומטי")
 st.markdown("ברוכים הבאים למערכת החכמה להפקת נתוני מסחר. המערכת מבינה שפה חופשית ותכין עבורכם קובץ אקסל מסודר (יומי או שעתי).")
-
-# הודעת הבהרה על השעון
 st.info("🕒 **שימו לב:** כל השעות במערכת (בבקשה שלכם ובקובץ האקסל) הן לפי **שעון ישראל**. גם עבור נכסים בחו\"ל, המערכת מתרגמת את הזמן אוטומטית לשעון המקומי שלנו.")
 st.divider()
 
 st.subheader("מה ברצונך לבדוק?")
 instruction = "לדוגמה: תא 35 ודולר לשנה אחרונה / פועלים ולאומי לחודש אחרון בין 11:00 ל-14:00."
-user_input = st.text_area("הקלד את בקשתך כאן:", placeholder=instruction, height=100)
 
-if st.button("🚀 נתח והפק אקסל", use_container_width=True):
-    # משיכת המפתח מתוך הסודות של Streamlit
+# שימוש בטופס (Form) כדי שלחיצה על אנטר תשגר את הבקשה
+with st.form(key='search_form'):
+    user_input = st.text_input("הקלד את בקשתך כאן ולחץ אנטר (Enter) או על הכפתור:", placeholder=instruction)
+    submit_button = st.form_submit_button("🚀 נתח והפק אקסל")
+
+# מה קורה כשהמשתמש שולח את הבקשה (אנטר או לחיצה)
+if submit_button:
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
     except Exception:
@@ -47,7 +79,6 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
         
     try:
         with st.spinner("🤖 מנתח את הבקשה, מתחבר לבורסה ומכין את הנתונים... אנא המתן ⏳"):
-            
             genai.configure(api_key=api_key, transport='rest')
             model = genai.GenerativeModel('gemini-2.5-flash')
             
@@ -78,7 +109,7 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
             end_hour = data.get("end_hour", 14)
 
             if not tickers:
-                st.error("❌ לא הצלחתי לזהות נכסים באנגלית בבקשה שלך. נסה לנסח שוב (למשל: לאומי ודולר שקל).")
+                st.error("❌ לא הצלחתי לזהות נכסים באנגלית בבקשה שלך. נסה לנסח שוב.")
                 st.stop()
 
             all_results = {}
@@ -96,7 +127,6 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
                 
                 if interval == "1h":
                     df = df[~df.index.duplicated(keep='first')].resample('h').ffill(limit=4)
-                    
                     df_start = df[df.index.hour == start_hour][['Close']].copy()
                     df_end = df[df.index.hour == end_hour][['Close']].copy()
                     
@@ -104,7 +134,6 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
                     df_end['Date_obj'] = df_end.index.date
                     
                     merged = pd.merge(df_start, df_end, on='Date_obj', how='outer', suffixes=('_start', '_end'))
-                    
                     merged.dropna(subset=['Close_start', 'Close_end'], inplace=True)
                     if merged.empty: continue
                     
@@ -130,7 +159,6 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
                     
                     df_daily['Date'] = df_daily['Date_obj'].dt.strftime('%d/%m/%Y')
                     df_daily['Yield'] = (df_daily['Close'] / df_daily['Close'].shift(1)) - 1
-                    
                     all_results[sym] = df_daily[['Date', 'Open', 'Close', 'Yield']]
 
             if not all_results:
@@ -144,16 +172,27 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
                     pd.Series([f"נכס: {s}"]).to_excel(writer, startrow=0, startcol=col, index=False, header=False)
                     d.to_excel(writer, startrow=1, startcol=col, index=False)
                     col += len(d.columns) + 1
-        
-        st.success(f"✅ סיימתי! משכתי נתונים נקיים ומסודרים עבור {len(all_results)} נכסים.")
-        
-        st.download_button(
-            label="📥 הורד את קובץ האקסל שלך עכשיו", 
-            data=buf.getvalue(), 
-            file_name="Market_Report.xlsx", 
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
+            
+            # במקום להדפיס מיד, נשמור את התוצאות בזיכרון של האתר
+            st.session_state.excel_file = buf.getvalue()
+            st.session_state.success_message = f"✅ סיימתי! משכתי נתונים נקיים ומסודרים עבור {len(all_results)} נכסים."
+            if interval == "1h":
+                st.session_state.interval_info = f"📊 הקובץ כולל השוואה בין השעה {start_hour}:00 לשעה {end_hour}:00."
+            else:
+                st.session_state.interval_info = "📊 הקובץ כולל נתונים ברזולוציה יומית (מחיר פתיחה מול סגירה)."
 
     except Exception as e:
         st.error(f"❌ אירעה שגיאה בעיבוד. נסה שוב בעוד כמה שניות. (פירוט טכני: {e})")
+
+# אם קיים קובץ מוכן בזיכרון, נציג אותו תמיד (גם אחרי שלוחצים על כפתור הורדה)
+if st.session_state.excel_file is not None:
+    st.success(st.session_state.success_message)
+    st.info(st.session_state.interval_info)
+    
+    st.download_button(
+        label="📥 הורד את קובץ האקסל שלך עכשיו", 
+        data=st.session_state.excel_file, 
+        file_name="Market_Report.xlsx", 
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
