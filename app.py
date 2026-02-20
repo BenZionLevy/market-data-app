@@ -74,7 +74,7 @@ st.info("🕒 **שימו לב:** נתונים שעתיים מתורגמים תמ
 st.divider()
 
 st.subheader("מה ברצונך לבדוק?")
-instruction = "לדוגמה: תא 35 לשנה אחרונה / פועלים בין 11:00 ל-14:00 / דולר שקל חצי שנה כל שעה."
+instruction = "לדוגמה: CAC 40 שנה אחורה / מניית אפל וטסלה כל שעה / תא 35 בין 11:00 ל-14:00."
 
 with st.form(key='search_form'):
     user_input = st.text_input("הקלד את בקשתך כאן ולחץ אנטר (Enter):", placeholder=instruction)
@@ -96,20 +96,24 @@ if submit_button:
             genai.configure(api_key=api_key, transport='rest')
             model = genai.GenerativeModel('gemini-2.5-flash')
             
+            # --- חוקיות פשוטה, גלובלית ואלגנטית ללא טלאים ---
             prompt = f"""
+            You are an expert financial data extraction system.
             Analyze the user request: "{user_input}"
-            Extract the parameters and return ONLY a valid JSON.
-            Map assets to tickers: ת"א 35=TA35.TA, דולר/שקל=ILS=X, S&P 500=ES=F, לאומי=LUMI.TA, פועלים=POLI.TA, בנקים=TELB.TA. 
-            CRITICAL RULE: The "tickers" array MUST contain ONLY official English/Symbol tickers.
-            Rules for JSON fields:
+            Return ONLY a valid JSON object.
+
+            TICKER IDENTIFICATION ALGORITHM:
+            1. ISRAELI DICTIONARY: ONLY if the user explicitly asks for these specific Israeli terms, use this exact mapping: ת"א 35=TA35.TA, דולר/שקל=ILS=X, S&P 500=ES=F, לאומי=LUMI.TA, פועלים=POLI.TA, בנקים=TELB.TA.
+            2. GLOBAL SEARCH: For ANY other asset globally (indices, stocks, crypto), ignore the Israeli dictionary. Use your vast knowledge to find its official Yahoo Finance ticker. 
+            3. NO FALLBACK: If the user misspells a global asset (e.g., "AC 40" instead of CAC 40), resolve the spelling error intelligently. NEVER default to TA35.TA or any other local asset unless requested.
+            4. FORMAT: The "tickers" array MUST contain ONLY official English/Symbol tickers. No Hebrew text.
+
+            DATA PARAMETERS:
             - "tickers": list of strings.
             - "period": valid yfinance period (e.g., "1mo", "1y", "729d"). If hourly requested and period is over 2 years, max is "729d".
-            - "mode": string. Choose "compare_hours" if user asks to compare specific hours (e.g., between 10 and 12). Choose "all_hours" if user asks for every hour continuously (כל שעה). Choose "daily" if daily resolution or no hours mentioned.
+            - "mode": "compare_hours" (if user asks to compare specific hours), "all_hours" (if user asks for every hour continuously), or "daily" (default).
             - "start_hour": integer (0-23), only if mode is "compare_hours". Default is 11.
             - "end_hour": integer (0-23), only if mode is "compare_hours". Default is 14.
-            Example 1: {{"tickers": ["TA35.TA"], "period": "1mo", "mode": "compare_hours", "start_hour": 11, "end_hour": 14}}
-            Example 2: {{"tickers": ["ES=F"], "period": "1y", "mode": "all_hours"}}
-            Example 3: {{"tickers": ["LUMI.TA"], "period": "3mo", "mode": "daily"}}
             """
             
             response = model.generate_content(prompt)
@@ -175,7 +179,6 @@ if submit_button:
                     df = df[~df.index.duplicated(keep='first')].resample('h').ffill(limit=4)
                     df.dropna(subset=['Close'], inplace=True)
                     
-                    # התיקון: בניית הטבלה ישירות על העתק של הנתונים כדי לשמור על סנכרון שורות
                     df_all = df[['Close']].copy()
                     df_all['Date'] = df_all.index.strftime('%d/%m/%Y')
                     df_all['Time'] = df_all.index.strftime('%H:%M')
@@ -197,7 +200,7 @@ if submit_button:
                     all_results[sym] = df_daily[['Date', 'Open', 'Close', 'Yield']]
 
             if not all_results:
-                st.warning("⚠️ לא נמצאו נתונים תקינים בבורסה (ייתכן שהבורסה הייתה סגורה בימים אלו).")
+                st.warning(f"⚠️ לא נמצאו נתונים תקינים עבור הנכסים שביקשת ({', '.join(tickers)}).")
                 st.stop()
 
             buf = BytesIO()
@@ -209,7 +212,7 @@ if submit_button:
                     col += len(d.columns) + 1
             
             st.session_state.excel_file = buf.getvalue()
-            st.session_state.success_message = f"✅ סיימתי! משכתי נתונים עבור {len(all_results)} נכסים."
+            st.session_state.success_message = f"✅ סיימתי! משכתי נתונים עבור {len(all_results)} נכסים ({', '.join(tickers)})."
             
             if mode == "compare_hours":
                 st.session_state.interval_info = f"📊 הקובץ כולל השוואה בין השעה {start_hour}:00 לשעה {end_hour}:00."
