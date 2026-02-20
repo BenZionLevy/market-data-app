@@ -96,7 +96,6 @@ if submit_button:
             genai.configure(api_key=api_key, transport='rest')
             model = genai.GenerativeModel('gemini-2.5-flash')
             
-            # --- חוקיות פשוטה, גלובלית ואלגנטית ללא טלאים ---
             prompt = f"""
             You are an expert financial data extraction system.
             Analyze the user request: "{user_input}"
