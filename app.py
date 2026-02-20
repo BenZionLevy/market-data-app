@@ -5,115 +5,89 @@ import google.generativeai as genai
 import json
 from io import BytesIO
 import warnings
+import re
 
-# השתקת אזהרות
 warnings.filterwarnings('ignore')
 
-# הגדרות עמוד (חובה להיות הפקודה הראשונה)
 st.set_page_config(page_title="מחולל נתוני שוק", page_icon="📈", layout="centered")
 
-# עיצוב מותאם אישית (RTL, פונטים, עיצוב כפתורים)
 st.markdown("""
 <style>
-    /* כיווניות לימין עבור עברית */
-    .block-container {
-        direction: rtl;
-        text-align: right;
-    }
-    /* עיצוב כפתור ההורדה לירוק ובולט */
+    .block-container { direction: rtl; text-align: right; }
     [data-testid="stDownloadButton"] button {
-        background-color: #17B169;
-        color: white;
-        border-radius: 8px;
-        font-weight: bold;
-        width: 100%;
-        margin-top: 15px;
-        border: none;
+        background-color: #17B169; color: white; border-radius: 8px; font-weight: bold; width: 100%; margin-top: 15px; border: none;
     }
-    [data-testid="stDownloadButton"] button:hover {
-        background-color: #128C53;
-        color: white;
-    }
-    /* עיצוב כפתור ההפקה הרגיל */
-    .stButton > button {
-        border-radius: 8px;
-        font-weight: bold;
-    }
+    [data-testid="stDownloadButton"] button:hover { background-color: #128C53; color: white; }
+    .stButton > button { border-radius: 8px; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("📈 מחולל נתוני שוק אוטומטי")
-st.markdown("ברוכים הבאים למערכת החכמה להפקת נתוני מסחר. המערכת מבינה שפה חופשית ותכין עבורכם קובץ אקסל מסודר (ברזולוציה יומית או שעתית).")
+st.markdown("ברוכים הבאים למערכת החכמה להפקת נתוני מסחר. המערכת מבינה שפה חופשית ותכין עבורכם קובץ אקסל מסודר (יומי או שעתי).")
 st.divider()
 
-# סרגל צד 
 with st.sidebar:
     st.header("⚙️ הגדרות מערכת")
-    api_key = st.text_input("הכנס מפתח Gemini API:", type="password", help="המערכת צריכה מפתח כדי להבין את השפה החופשית שלך.")
+    api_key = st.text_input("הכנס מפתח Gemini API:", type="password")
     st.caption("[לחץ כאן להוצאת מפתח חינמי מגוגל](https://aistudio.google.com/app/apikey)")
     st.divider()
-    st.markdown("💡 **טיפ:** אם מופיעה שגיאה או שהאתר עמוס, פשוט המתן כדקה ונסה שוב.")
+    st.markdown("💡 **טיפ:** אם מופיעה שגיאה, המתן כדקה ונסה שוב.")
 
-# אזור הקלט
 st.subheader("מה ברצונך לבדוק?")
-instruction = "לדוגמה: תא 35 ודולר לשנה אחרונה ברזולוציה יומית / פועלים ולאומי לחודש אחרון בין 10:00 ל-16:00."
+instruction = "לדוגמה: תא 35 ודולר לשנה אחרונה / פועלים ולאומי לחודש אחרון בין 11:00 ל-14:00."
 user_input = st.text_area("הקלד את בקשתך כאן:", placeholder=instruction, height=100)
 
 if st.button("🚀 נתח והפק אקסל", use_container_width=True):
     if not api_key:
-        st.error("🔒 אנא הכנס מפתח API בסרגל הצד (משמאל) כדי להתחיל.")
+        st.error("🔒 אנא הכנס מפתח API בסרגל הצד.")
         st.stop()
-    
     if not user_input.strip():
         st.warning("✍️ אנא הכנס בקשה בתיבת הטקסט.")
         st.stop()
         
     try:
-        # ספינר טעינה יפה בזמן שהמערכת חושבת (במקום השורה הכחולה המוזרה)
         with st.spinner("🤖 מנתח את הבקשה, מתחבר לבורסה ומכין את הנתונים... אנא המתן ⏳"):
             
-            # הגדרת Gemini - שימוש במודל 2.5 העדכני
             genai.configure(api_key=api_key, transport='rest')
             model = genai.GenerativeModel('gemini-2.5-flash')
             
-            # פרומפט חכם
+            # הפרומפט שודרג כדי למנוע החזרת עברית בטיקרים
             prompt = f"""
             Analyze the user request: "{user_input}"
             Extract the required financial data parameters and return ONLY a valid JSON object.
-            Map assets to tickers: ת"א 35=TA35.TA, דולר/שקל=ILS=X, S&P 500=ES=F, לאומי=LUMI.TA, פועלים=POLI.TA, בנקים=TELB.TA. If not in list, guess the correct Yahoo Finance ticker.
+            Map assets to tickers: ת"א 35=TA35.TA, דולר/שקל=ILS=X, S&P 500=ES=F, לאומי=LUMI.TA, פועלים=POLI.TA, בנקים=TELB.TA. 
+            CRITICAL RULE: The "tickers" array MUST contain ONLY official English/Symbol tickers. NEVER return Hebrew text in the "tickers" array.
             Rules for JSON fields:
             - "tickers": list of strings (tickers).
             - "period": valid yfinance period (e.g., "1mo", "1y", "729d"). If hourly requested and period is over 2 years, max is "729d".
             - "interval": "1h" if user asks for specific hours or intraday. "1d" if user asks for daily data or doesn't mention hours.
             - "start_hour": integer (0-23), only if interval is "1h". Default is 11.
             - "end_hour": integer (0-23), only if interval is "1h". Default is 14.
-            Example: {{"tickers": ["TA35.TA"], "period": "1mo", "interval": "1h", "start_hour": 10, "end_hour": 15}}
+            Example: {{"tickers": ["TA35.TA"], "period": "1mo", "interval": "1h", "start_hour": 11, "end_hour": 14}}
             """
             
-            # קבלת תשובה
             response = model.generate_content(prompt)
-            
-            # פענוח ה-JSON
             clean_text = response.text.replace('```json', '').replace('```', '').strip()
             data = json.loads(clean_text)
             
-            tickers = data.get("tickers", [])
+            raw_tickers = data.get("tickers", [])
+            # חומת אש: סינון כל טיקר שמכיל אותיות בעברית כדי למנוע שגיאת latin-1
+            tickers = [t for t in raw_tickers if not re.search(r'[\u0590-\u05FF]', t)]
+            
             period = data.get("period", "1y")
             interval = data.get("interval", "1d")
             start_hour = data.get("start_hour", 11)
             end_hour = data.get("end_hour", 14)
 
             if not tickers:
-                st.error("❌ לא הצלחתי לזהות נכסים בבקשה שלך. נסה לנסח אחרת.")
+                st.error("❌ לא הצלחתי לזהות נכסים באנגלית בבקשה שלך. נסה לנסח שוב (למשל: לאומי ודולר שקל).")
                 st.stop()
 
             all_results = {}
             for sym in tickers:
-                # הורדת נתונים
                 df = yf.download(sym, period=period, interval=interval, auto_adjust=False, progress=False)
                 if df.empty: continue
                 
-                # עיבוד וסידור נתונים
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
                 
@@ -128,11 +102,20 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
                     df_start = df[df.index.hour == start_hour][['Close']].copy()
                     df_end = df[df.index.hour == end_hour][['Close']].copy()
                     
-                    df_start['Date'] = df_start.index.strftime('%d/%m/%Y')
-                    df_end['Date'] = df_end.index.strftime('%d/%m/%Y')
+                    # שימוש בתאריכים אמיתיים לסידור כרונולוגי נכון
+                    df_start['Date_obj'] = df_start.index.date
+                    df_end['Date_obj'] = df_end.index.date
                     
-                    merged = pd.merge(df_start, df_end, on='Date', how='outer', suffixes=('_start', '_end'))
+                    merged = pd.merge(df_start, df_end, on='Date_obj', how='outer', suffixes=('_start', '_end'))
+                    
+                    # מחיקת שורות שאין בהן מחיר התחלה וסיום (סופי שבוע / חגים)
+                    merged.dropna(subset=['Close_start', 'Close_end'], inplace=True)
                     if merged.empty: continue
+                    
+                    # סידור לפי תאריך מוקדם למאוחר (מונע את ה"קפיצה בשנים")
+                    merged['Date_obj'] = pd.to_datetime(merged['Date_obj'])
+                    merged = merged.sort_values('Date_obj')
+                    merged['Date'] = merged['Date_obj'].dt.strftime('%d/%m/%Y')
                     
                     merged[f'Time_{start_hour}'] = f'{start_hour}:00'
                     merged[f'Time_{end_hour}'] = f'{end_hour}:00'
@@ -144,15 +127,20 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
                 else:
                     df = df[~df.index.duplicated(keep='first')]
                     df_daily = df[['Open', 'Close']].copy()
-                    df_daily['Date'] = df_daily.index.strftime('%d/%m/%Y')
+                    
+                    df_daily['Date_obj'] = df_daily.index.date
+                    df_daily['Date_obj'] = pd.to_datetime(df_daily['Date_obj'])
+                    df_daily = df_daily.sort_values('Date_obj')
+                    df_daily.dropna(subset=['Open', 'Close'], inplace=True)
+                    
+                    df_daily['Date'] = df_daily['Date_obj'].dt.strftime('%d/%m/%Y')
                     df_daily['Yield'] = (df_daily['Close'] / df_daily['Open']) - 1
                     all_results[sym] = df_daily[['Date', 'Open', 'Close', 'Yield']]
 
             if not all_results:
-                st.warning("⚠️ לא נמצאו נתונים תקינים בבורסה עבור הבקשה שלך.")
+                st.warning("⚠️ לא נמצאו נתונים תקינים בבורסה (ייתכן שהבורסה הייתה סגורה בימים אלו).")
                 st.stop()
 
-            # יצירת קובץ האקסל הוירטואלי
             buf = BytesIO()
             with pd.ExcelWriter(buf, engine='openpyxl') as writer:
                 col = 0
@@ -161,15 +149,8 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
                     d.to_excel(writer, startrow=1, startcol=col, index=False)
                     col += len(d.columns) + 1
         
-        # --- הודעות סיום מוצלחות וידידותיות ---
-        st.success(f"✅ סיימתי! משכתי בהצלחה נתונים עבור {len(all_results)} נכסים.")
+        st.success(f"✅ סיימתי! משכתי נתונים נקיים ומסודרים עבור {len(all_results)} נכסים.")
         
-        if interval == "1h":
-            st.info(f"📊 הקובץ כולל השוואה בין השעה {start_hour}:00 לשעה {end_hour}:00.")
-        else:
-            st.info("📊 הקובץ כולל נתונים ברזולוציה יומית (מחיר פתיחה מול סגירה).")
-
-        # כפתור הורדה מוגדל (מקבל את העיצוב מה-CSS למעלה)
         st.download_button(
             label="📥 הורד את קובץ האקסל שלך עכשיו", 
             data=buf.getvalue(), 
@@ -179,4 +160,4 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
         )
 
     except Exception as e:
-        st.error(f"❌ אירעה שגיאה. ייתכן שיש עומס על השרת, המתן חצי דקה ונסה שוב. (פירוט: {e})")
+        st.error(f"❌ אירעה שגיאה בעיבוד. נסה שוב בעוד כמה שניות. (פירוט טכני: {e})")
