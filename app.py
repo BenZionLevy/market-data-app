@@ -51,7 +51,6 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
             genai.configure(api_key=api_key, transport='rest')
             model = genai.GenerativeModel('gemini-2.5-flash')
             
-            # הפרומפט שודרג כדי למנוע החזרת עברית בטיקרים
             prompt = f"""
             Analyze the user request: "{user_input}"
             Extract the required financial data parameters and return ONLY a valid JSON object.
@@ -71,7 +70,6 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
             data = json.loads(clean_text)
             
             raw_tickers = data.get("tickers", [])
-            # חומת אש: סינון כל טיקר שמכיל אותיות בעברית כדי למנוע שגיאת latin-1
             tickers = [t for t in raw_tickers if not re.search(r'[\u0590-\u05FF]', t)]
             
             period = data.get("period", "1y")
@@ -102,17 +100,14 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
                     df_start = df[df.index.hour == start_hour][['Close']].copy()
                     df_end = df[df.index.hour == end_hour][['Close']].copy()
                     
-                    # שימוש בתאריכים אמיתיים לסידור כרונולוגי נכון
                     df_start['Date_obj'] = df_start.index.date
                     df_end['Date_obj'] = df_end.index.date
                     
                     merged = pd.merge(df_start, df_end, on='Date_obj', how='outer', suffixes=('_start', '_end'))
                     
-                    # מחיקת שורות שאין בהן מחיר התחלה וסיום (סופי שבוע / חגים)
                     merged.dropna(subset=['Close_start', 'Close_end'], inplace=True)
                     if merged.empty: continue
                     
-                    # סידור לפי תאריך מוקדם למאוחר (מונע את ה"קפיצה בשנים")
                     merged['Date_obj'] = pd.to_datetime(merged['Date_obj'])
                     merged = merged.sort_values('Date_obj')
                     merged['Date'] = merged['Date_obj'].dt.strftime('%d/%m/%Y')
@@ -125,6 +120,7 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
                     all_results[sym] = merged[cols]
                     
                 else:
+                    # --- לוגיקה יומית מתוקנת ---
                     df = df[~df.index.duplicated(keep='first')]
                     df_daily = df[['Open', 'Close']].copy()
                     
@@ -134,7 +130,10 @@ if st.button("🚀 נתח והפק אקסל", use_container_width=True):
                     df_daily.dropna(subset=['Open', 'Close'], inplace=True)
                     
                     df_daily['Date'] = df_daily['Date_obj'].dt.strftime('%d/%m/%Y')
-                    df_daily['Yield'] = (df_daily['Close'] / df_daily['Open']) - 1
+                    
+                    # התיקון הקריטי: חישוב תשואה יומית (סגירה נוכחית חלקי סגירה של אתמול)
+                    df_daily['Yield'] = (df_daily['Close'] / df_daily['Close'].shift(1)) - 1
+                    
                     all_results[sym] = df_daily[['Date', 'Open', 'Close', 'Yield']]
 
             if not all_results:
