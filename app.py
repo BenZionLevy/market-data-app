@@ -6,15 +6,12 @@ import json
 from io import BytesIO
 import warnings
 
-# השתקת אזהרות
 warnings.filterwarnings('ignore')
 
 st.set_page_config(page_title="מחולל נתוני שוק", page_icon="📈")
-
 st.title("📈 מחולל נתוני שוק אוטומטי")
 st.markdown("מערכת להפקת קבצי אקסל של נתוני מסחר.")
 
-# סרגל צד
 with st.sidebar:
     st.header("הגדרות")
     api_key = st.text_input("הכנס מפתח Gemini API:", type="password")
@@ -29,9 +26,8 @@ if st.button("🚀 הפק אקסל"):
         st.stop()
     
     try:
-        # פתרון סופי: שימוש במודל בגרסת ה-Beta המעודכנת (v1beta)
-        # שם המודל המדויק לגרסה זו הוא gemini-1.5-flash-latest
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
+        # ✅ תוקן: gemini-2.0-flash במקום gemini-1.5-flash-latest
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
         
         prompt = f"""
         Extract assets and period from: "{user_input}"
@@ -39,12 +35,7 @@ if st.button("🚀 הפק אקסל"):
         Return ONLY JSON: {{"tickers": ["TICKER"], "period": "1y"}}
         """
         
-        payload = {
-            "contents": [{
-                "parts": [{"text": prompt}]
-            }]
-        }
-        
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
         response = requests.post(url, json=payload)
         
         if response.status_code != 200:
@@ -54,7 +45,6 @@ if st.button("🚀 הפק אקסל"):
         result_json = response.json()
         ai_text = result_json['candidates'][0]['content']['parts'][0]['text']
         
-        # ניקוי ופענוח JSON
         clean_text = ai_text.replace('```json', '').replace('```', '').strip()
         data = json.loads(clean_text)
         tickers = data.get("tickers", [])
@@ -66,20 +56,17 @@ if st.button("🚀 הפק אקסל"):
 
         all_results = {}
         for sym in tickers:
-            # הורדה ועיבוד נתונים
             df = yf.download(sym, period=period, interval="1h", auto_adjust=False, progress=False)
             if df.empty: continue
             
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
             
-            # תיקון אזור זמן לישראל
             if df.index.tz is None:
                 df.index = df.index.tz_localize('UTC').tz_convert('Asia/Jerusalem')
             else:
                 df.index = df.index.tz_convert('Asia/Jerusalem')
             
-            # השלמת נתונים חסרים (Forward Fill)
             df = df[~df.index.duplicated(keep='first')].resample('h').ffill(limit=4)
             
             df_11 = df[df.index.hour == 11][['Close']].copy()
@@ -98,7 +85,6 @@ if st.button("🚀 הפק אקסל"):
             st.warning("לא נמצאו נתונים תקינים ביאהו פייננס.")
             st.stop()
 
-        # כתיבה לאקסל
         buf = BytesIO()
         with pd.ExcelWriter(buf, engine='openpyxl') as writer:
             col = 0
