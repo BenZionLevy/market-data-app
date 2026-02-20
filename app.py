@@ -1,4 +1,4 @@
-# import streamlit as st
+import streamlit as st
 import yfinance as yf
 import pandas as pd
 from io import BytesIO
@@ -10,7 +10,6 @@ st.set_page_config(page_title="מחולל נתוני שוק", page_icon="📈")
 st.title("📈 מחולל נתוני שוק אוטומטי")
 st.markdown("מערכת להפקת קבצי אקסל של נתוני מסחר.")
 
-# מיפוי נכסים
 TICKER_MAP = {
     'תא 35': 'TA35.TA', 'ת"א 35': 'TA35.TA', 'ta35': 'TA35.TA',
     'דולר שקל': 'ILS=X', 'דולר/שקל': 'ILS=X', 'דולר': 'ILS=X',
@@ -21,43 +20,40 @@ TICKER_MAP = {
 }
 
 PERIOD_MAP = {
-    'שנה': '1y', 'שנתיים': '2y', 'שלוש שנים': '5y',
+    'שנה': '1y', 'שנתיים': '2y',
     'חודש': '1mo', 'חודשיים': '3mo', 'שלושה חודשים': '3mo',
     'שבוע': '5d', 'יום': '1d',
-    '1y': '1y', '6mo': '6mo', '3mo': '3mo', '1mo': '1mo',
 }
 
 instruction = "לדוגמה: תא 35, לאומי ודולר שקל לשנה אחרונה."
 user_input = st.text_area("מה ברצונך לבדוק?", placeholder=instruction)
 
-# הצג נכסים זמינים
-with st.expander("📋 נכסים זמינים"):
+with st.expander("נכסים זמינים"):
     st.markdown("""
-    | שם | טיקר |
-    |---|---|
-    | ת"א 35 | TA35.TA |
-    | לאומי | LUMI.TA |
-    | פועלים | POLI.TA |
-    | בנקים | TELB.TA |
-    | דולר/שקל | ILS=X |
-    | S&P 500 | ES=F |
-    """)
+| שם | טיקר |
+|---|---|
+| ת"א 35 | TA35.TA |
+| לאומי | LUMI.TA |
+| פועלים | POLI.TA |
+| בנקים | TELB.TA |
+| דולר/שקל | ILS=X |
+| S&P 500 | ES=F |
+""")
 
-if st.button("🚀 הפק אקסל"):
+if st.button("הפק אקסל"):
     if not user_input.strip():
         st.error("אנא הכנס בקשה.")
         st.stop()
 
-    # פרסור טקסט ישיר - ללא AI
     lower_input = user_input.lower()
     tickers = list({v for k, v in TICKER_MAP.items() if k in lower_input})
     period = next((v for k, v in PERIOD_MAP.items() if k in lower_input), '1y')
 
     if not tickers:
-        st.warning("לא זוהו נכסים. נסה לכתוב: 'לאומי', 'תא 35', 'דולר שקל' וכו'")
+        st.warning("לא זוהו נכסים. נסה לכתוב: לאומי, תא 35, דולר שקל וכו'")
         st.stop()
 
-    st.info(f"✅ זוהו: {', '.join(tickers)} | תקופה: {period}")
+    st.info(f"זוהו: {', '.join(tickers)} | תקופה: {period}")
 
     try:
         all_results = {}
@@ -91,7 +87,7 @@ if st.button("🚀 הפק אקסל"):
             all_results[sym] = merged[['Date', 'Time_11', 'Close_11', 'Time_14', 'Close_14', 'Yield']]
 
         if not all_results:
-            st.warning("לא נמצאו נתונים תקינים ביאהו פייננס.")
+            st.warning("לא נמצאו נתונים תקינים.")
             st.stop()
 
         buf = BytesIO()
@@ -102,15 +98,17 @@ if st.button("🚀 הפק אקסל"):
                 d.to_excel(writer, startrow=1, startcol=col, index=False)
                 col += len(d.columns) + 1
 
-        st.success("✅ הקובץ מוכן!")
-        st.download_button("📥 הורד אקסל", buf.getvalue(), "Market_Report.xlsx",
+        st.success("הקובץ מוכן!")
+        st.download_button("הורד אקסל", buf.getvalue(), "Market_Report.xlsx",
                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     except Exception as e:
         st.error(f"שגיאה: {e}")
 ```
 
-וה-`requirements.txt` — **הסר את `google-generativeai`** כי לא צריך אותה יותר:
+---
+
+**requirements.txt:**
 ```
 streamlit
 yfinance
