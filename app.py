@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import google.generativeai as genai
+import requests  # וודא שהשורה הזו קיימת
 import json
 from io import BytesIO
 import warnings
