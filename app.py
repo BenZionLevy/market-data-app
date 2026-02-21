@@ -75,7 +75,7 @@ st.info("🕒 **שימו לב:** נתונים שעתיים מתורגמים תמ
 st.divider()
 
 st.subheader("מה ברצונך לבדוק?")
-instruction = "לדוגמה: CAC 40 שנה אחורה / מניית אפל וטסלה כל שעה / תא 35 בין 11:00 ל-14:00."
+instruction = "לדוגמה: S&P 500 שנה אחורה / מניית אפל וטסלה כל שעה / תא 35 בין 11:00 ל-14:00."
 
 with st.form(key='search_form'):
     user_input = st.text_input("הקלד את בקשתך כאן ולחץ אנטר (Enter):", placeholder=instruction)
